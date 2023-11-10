@@ -1,3 +1,10 @@
+/**
+ * File: copter.ino
+ * Author: github.com/annadostoevskaya
+ * Date: 11/10/2023 20:13:34
+ * Last Modified Date: 11/10/2023 20:13:43
+ */
+
 #include <Servo.h>
 
 Servo motors[4];

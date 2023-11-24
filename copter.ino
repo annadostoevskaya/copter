@@ -1,16 +1,22 @@
 /**
-   File: copter.ino
-   Author: github.com/annadostoevskaya
-   Date: 11/10/2023 20:13:34
-   Last Modified Date: 11/10/2023 20:13:43
-   
-   Bluetooth:
-    - Serial1
-    - 19 - TXD (for arduino RX)
-    - 18 - RXD (for arduino TX)
+    File: copter.ino
+    Author: github.com/annadostoevskaya
+    Date: 11/10/2023 20:13:34
+    Last Modified Date: 11/20/2023 22:00:46
+    
+    Description:
+        copter.ino is simple homebrew project for custom copter.
+        TODO(annad): I add link on video in this file later.
 
-   Motors:
-    - pins 2, 3, 4 & 5
+    Bluetooth:
+        TODO(annad): Write bluetooth library with support HardwareSerial.
+        ---
+        Serial1:
+            * 19 - TXD (for arduino RX)
+            * 18 - RXD (for arduino TX)
+
+    Motors:
+        * pins 2, 3, 4 & 5
 */ 
 
 #include <Servo.h>

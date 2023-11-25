@@ -17,6 +17,10 @@
 
     Motors:
         * pins 2, 3, 4 & 5
+
+    Gyroscope:
+        * D21 - SCL
+        * D20 - SDA
 */ 
 
 #include <Servo.h>
@@ -24,7 +28,7 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 
-#define BTSerial Serial // 19, 18
+#define BTSerial Serial1 // 19, 18
 
 struct Euler
 {
@@ -39,6 +43,9 @@ struct PID
   double p;
   double i;
   double d;
+
+  double prev_err;
+  double integral;
 };
 
 static Euler g_gyro_pos = {};
@@ -76,20 +83,20 @@ void gyroscope_calibrate(Euler &zero)
   // Serial.println(zero.roll, 10);
 }
 
-double pid_regulate(const PID& K, const double err, double& prev_err, double& integral, const double dt)
+double pid_regulate(PID& K, const double err, const double dt)
 {
   double proportional = err;
-  integral += err * dt;
-  double derivative = (err - prev_err) / dt;
-  prev_err = err;
+  K.integral += err * dt;
+  double derivative = (err - K.prev_err) / dt;
+  K.prev_err = err;
 
-  return (K.p * proportional) + (K.i * integral) + (K.d * derivative); 
+  return (K.p * proportional) + (K.i * K.integral) + (K.d * derivative); 
 }
 
 void setup()
 {
   Serial.begin(9600);
-  Serial.println("Serial: Initialized...");
+  // Serial.println("Serial: Initialized...");
   
   BTSerial.begin(9600);
 
@@ -108,14 +115,14 @@ void setup()
   int port = 0;
   for (int i = 0; i < 4; i += 1)
   {
-    Serial.println("Servo: attach port");
+    // Serial.println("Servo: attach port");
     port = shift + i;
     motors[i].attach(port);
   }
 
   for (int i = 0; i < 4; i += 1)
   {
-    Serial.println("Servo: setup, part 1");
+    // Serial.println("Servo: setup, part 1");
     motors[i].writeMicroseconds(2300);
   }
 
@@ -123,10 +130,10 @@ void setup()
 
   for (int i = 0; i < 4; i += 1)
   {
-    Serial.println("Servo: setup, part 2");
+    // Serial.println("Servo: setup, part 2");
     motors[i].writeMicroseconds(800);
-    
   }
+  
   delay(6000);
 }
 
@@ -134,10 +141,9 @@ void loop()
 {
   uint32_t s_time = 0;
   uint32_t e_time = 0;
-  int16_t throttle = 0;
-  const PID K = { .p = 1.0, .i = 0.2, .d = 0.001 };
-  double pid_prev_err = 0.0f;
-  double pid_integral = 0.0f;
+
+  PID K_pitch = { .p = 1.0, .i = 0.0, .d = 0.0, .prev_err = 0.0, .integral = 0.0 };
+  PID K_yaw   = { .p = 1.0, .i = 0.0, .d = 0.0, .prev_err = 0.0, .integral = 0.0 };
 
   for (;;)
   {
@@ -145,8 +151,12 @@ void loop()
     s_time = micros();
 
     double dt = (double)(s_time - e_time) / (double)1e6;
-    float target_force = (float)BTSerial.parseInt(); // TODO(annad): User input
-    float target_pitch = 0.0f; // TODO(annad): User Input.
+    
+    // TODO(annad): User input
+    float target_force = (float)BTSerial.parseInt() / 100.0f;
+    // float target_force = 0.005f;
+    float target_pitch = 0.0f;
+    float target_yaw = 0.0f;
     
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
@@ -157,15 +167,47 @@ void loop()
       .roll   = g_gyro_pos.roll + (g.gyro.z - g_gyro_zero.roll) * dt
     };
     
-    double err = target_pitch - g_gyro_pos.pitch;
-    float prefer_pitch = (float)pid_regulate(K, err, pid_prev_err, pid_integral, dt);
-    float result_force_1 = 0.6 * (target_force) + 0.4 * (prefer_pitch / (2.0 * M_PI));
-    float result_force_3 = 0.6 * (target_force) - 0.4 * (prefer_pitch / (2.0 * M_PI));
-    int16_t throttle_1 = map(((int16_t)(result_force_1 * 100.0f)), 0, 100, 800, 2300);
-    int16_t throttle_3 = map(((int16_t)(result_force_3 * 100.0f)), 0, 100, 800, 2300);
+    float prefer_pitch = target_pitch - g_gyro_pos.pitch;
+    float prefer_yaw   = target_yaw - g_gyro_pos.yaw;
 
-    motors[1-1].writeMicroseconds(throttle_1);
-    motors[3-1].writeMicroseconds(throttle_3);
+    Serial.print("prefer_yaw:");
+    Serial.print(prefer_yaw, 9);
+//    Serial.print(",prefer_pitch:");
+//    Serial.print(prefer_pitch, 9);
+    
+    float force_1 = target_force *  prefer_yaw * prefer_pitch * 100000.0f;
+    float force_2 = target_force * (-prefer_yaw) * prefer_pitch * 100000.0f;
+    float force_3 = target_force * (-prefer_yaw) * (-prefer_pitch) * 100000.0f;
+    float force_4 = target_force *  prefer_yaw * (-prefer_pitch) * 100000.0f;
+
+//    float force_1 =   prefer_yaw * 100.0f;
+//    float force_2 = (-prefer_yaw) * 100.0f;
+//    float force_3 = (-prefer_yaw) * 100.0f;
+//    float force_4 =   prefer_yaw * 100.0f;
+
+    Serial.print(",force_4:");
+    Serial.print(force_4);
+    Serial.print(",force_2:");
+    Serial.print(force_2);
+    Serial.print(",force_3:");
+    Serial.print(force_3);
+    Serial.print(",force_4:");
+    Serial.print(force_4);
+    Serial.println("");
+
+//    float result_force_1 = target_force * prefer_pitch / (2.0 * M_PI);
+//    float result_force_2 = target_force * prefer_yaw / (2.0f * M_PI);
+//    float result_force_3 = target_force * (-prefer_pitch) / (2.0 * M_PI);
+//    float result_force_4 = target_force * (-prefer_yaw) / (2.0f * M_PI);
+    int16_t throttle_1 = map(((int16_t)(constrain(force_1, -100, 100))), -100, 100, 800, 2300);
+    int16_t throttle_2 = map(((int16_t)(constrain(force_2, -100, 100))), -100, 100, 800, 2300);
+    int16_t throttle_3 = map(((int16_t)(constrain(force_3, -100, 100))), -100, 100, 800, 2300);
+    int16_t throttle_4 = map(((int16_t)(constrain(force_4, -100, 100))), -100, 100, 800, 2300);
+
+     motors[1-1].writeMicroseconds(throttle_1);
+     motors[2-1].writeMicroseconds(throttle_2);
+     motors[3-1].writeMicroseconds(throttle_3);
+     motors[4-1].writeMicroseconds(throttle_4);
     
 //    Serial.print("x/pitch:");
 //    Serial.print(g_gyro_pos.pitch);
